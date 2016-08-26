@@ -1,0 +1,382 @@
+<html>
+<!--'==========================================================================
+'
+' NAME: 	ICT_Support.hta
+' AUTHOR: 	Mike Pohatu
+'
+' Change Log:
+'	26/08/2016 	Mike Pohatu		Initial version for general release
+'==========================================================================-->
+
+
+<SCRIPT LANGUAGE="VBScript">
+	option explicit
+	
+	'Customise these entries for your environment
+	Dim sAppCatalogUrl: sAppCatalogUrl = "http://SCCMSERVER/CMApplicationCatalog"
+	Dim sNetworkPathText: sNetworkPathText = "\\DOMAIN\NETLOGON\"	
+	Dim sLogoFile: sLogoFile = "logo.jpg"
+	Dim sServiceDeskLabel: sServiceDeskLabel = "Service Desk"
+	Dim sEmailAddr: sEmailAddr = sServiceDeskLabel & "<ServiceDesk@domain.com>"
+	Dim sServiceDeskExtn: sServiceDeskExtn = "1234"
+	Dim sServiceDeskDdi: sServiceDeskDdi = "555 5555"
+	
+	Const sVersion = "v1.4"
+	Const QUOTES = ""
+	Const NORMAL_WINDOW = 1
+	Const HKEY_CURRENT_USER   = &H80000001
+	Const REG_SZ        = 1
+	Const REG_EXPAND_SZ = 2
+	Const REG_BINARY    = 3
+	Const REG_DWORD     = 4
+	Const REG_MULTI_SZ  = 7
+	Const Ok = 0
+	Const OkCancel = 1
+	
+	Const Width = 400
+	Const Height = 500
+	
+	Dim wshShell: Set wshShell = CreateObject("Wscript.Shell")
+	Dim wshNetwork: Set wshNetwork=CreateObject("Wscript.Network")
+	Dim strComputer: strComputer = wshShell.ExpandEnvironmentStrings("%computername%")
+	Dim strLogonServer: strLogonServer = wshShell.ExpandEnvironmentStrings("%LOGONSERVER%")
+	Dim strWinDir: strWinDir = wshShell.ExpandEnvironmentStrings("%WinDir%")
+	Dim strProgFiles86: strProgFiles86 = wshShell.ExpandEnvironmentStrings("%ProgramFiles(x86)%")
+	Dim strProgFiles: strProgFiles = wshShell.ExpandEnvironmentStrings("%ProgramFiles%")
+   	Dim strUsername: strUsername = wshShell.ExpandEnvironmentStrings("%Username%")
+	Dim objFSO: Set objFSO = CreateObject("Scripting.FileSystemObject")
+	Dim objShell: Set objShell = CreateObject("Shell.Application")
+	Dim sBitLockerPinPath: sBitLockerPinPath = strWinDir & "\system32\bdechangepin.exe"
+	
+	Dim sSoftwareCenterPath: sSoftwareCenterPath = "C:\Windows\CCM\SCClient.exe"
+	
+	Dim bolOffline: bolOffline = false
+	
+	'Startup the window and display information. This is called from <body onload="LoadHTA"
+	Sub LoadHTA		
+		WindowResize Width,Height
+		DisplayBasicInfo
+		
+		if not objFSO.FolderExists(sNetworkPathText) then
+			bolOffline = true
+		end if
+		
+		DisplayHeading
+		DisplayDetailedInfo
+		DisplayTools
+		DisplayIPs
+	End sub
+
+	Sub WindowResize(iWidth, iHeight)
+		'The following three constants establish the width and height of the form and
+		'the dots per inch (DPI) in use on the screen that the form was designed on.
+		'If this script is run on a computer with a different DPI setting, then the form
+		'should be sized correctly. 
+		dim iDesignWidth, iDesignHeight
+		Dim pixels_per_logical_inch_height, height_pixels, pixels_per_logical_inch_width, width_pixels
+		dim WMI_service, item, items
+		
+		const DESIGN_DPI = 96	'dots per inch
+		iDesignWidth  = iWidth	'pixels
+		iDesignHeight = iHeight	'pixels
+		
+		'Begin code to resize the form based on users DPI setting.
+		
+		
+		set WMI_service = GetObject("winmgmts:{impersonationLevel=impersonate}!\\.\root\cimv2")
+		set items = WMI_service.ExecQuery("Select PixelsPerXLogicalInch,PixelsPerYLogicalInch from Win32_DesktopMonitor")
+		
+		for each item in items
+			pixels_per_logical_inch_height = item.PixelsPerYLogicalInch
+			pixels_per_logical_inch_width  = item.PixelsPerXLogicalInch
+		next
+		
+		width_pixels  = iDesignWidth / DESIGN_DPI * pixels_per_logical_inch_width
+		height_pixels = iDesignHeight / DESIGN_DPI * pixels_per_logical_inch_height
+		Window.ResizeTo width_pixels, height_pixels
+		 'End resize code.
+
+		'...
+
+	End Sub
+
+	'Display the appropriate heading for the build type/customer
+	Sub DisplayHeading
+		Dim sHtml
+		Dim sEmailText
+		
+		sEmailText = "%0D%0A" & "-----------------------------------" & "%0D%0A" &_ 
+		"Support Information" & "%0D%0A" & "%0D%0A" &_
+		"Username: " & strUsername & "%0D%0A" &_
+		"Device: " & strComputer
+		
+		sHtml = "<div class=logo>" &_
+			"<img src=" & sLogoFile & " alt="""" />" &_
+			"</div>" &_
+			"<div>" &_
+			"<h1>IT Info</h1>" &_
+			"</div>"
+
+		sHtml = sHtml & "<p>"
+		
+		if IsBlank(sEmailAddr) = false then 
+			sHtml = sHtml & "Email: <a href=""mailto:" & sEmailAddr & "?body=" & sEmailText & """>" & sServiceDeskLabel & "</a><br>"
+		end if
+
+		if IsBlank(sServiceDeskDdi) = false then
+			sHtml = sHtml & "Extn: " & sServiceDeskExtn & "<br>"
+		end if
+		
+		if IsBlank(sServiceDeskDdi) = false then
+			sHtml = sHtml & "Phone: " & sServiceDeskDdi & "<br>"
+		end if
+		
+		sHtml = sHtml & "</p>"
+		
+		outputText sHtml,"Heading"
+	End Sub
+	
+	'Display basic user and computer information
+	Sub DisplayBasicInfo
+		Dim strText
+		strText = "<p><h2>Basic Information</h2></p>" &_
+		"<p>" &_
+		"User ID: " & strUsername & "<br>" &_
+		"Computer Name: " & strComputer & "<br>" &_
+		"</p><br>"
+		
+		outputText strText,"Basic_Info"
+		
+	End Sub
+	
+	'Display NIC information to the screen
+	Sub DisplayIPs
+		Dim objNicConfig, objNic, strIPAddress
+		Dim colNic, colNicConfig, arrIPAddresses 
+		Dim objWMIService: Set objWMIService = GetObject("winmgmts:\\" & strComputer & "\root\cimv2")
+		Dim strText
+		
+		'Find NIC configurations with IP enabled
+		Set colNicConfig = objWMIService.ExecQuery("Select * From Win32_NetworkAdapterConfiguration Where IPEnabled = True")
+		
+		strText = "<p>"
+		
+		'Now we have those, find the NICs associated with the configuration using the MAC
+		For Each objNicConfig In colNicConfig
+			Set colNic = objWMIService.ExecQuery("Select * From Win32_NetworkAdapter Where MACAddress = '" & objNicConfig.MacAddress & "'")
+			
+			'For each NIC, display the details. 
+			For Each objNic in colNic
+				strText = strText & "<b>Network: </b>" & objNic.NetConnectionID & "<br>"
+				strText = strText &  "IP Address(es):" & "<br>"
+
+				arrIPAddresses = objNicConfig.IPAddress
+				'Display all IP addresses
+				For Each strIPAddress in arrIPAddresses
+					strText = strText & strIPAddress & "<br>"
+				Next
+				
+			Next
+		Next
+		
+		strText = strText & "</p><br>"
+		outputText strText,"NIC_Info"	
+	End Sub
+
+	
+	
+	'Display computer information to the window
+	Sub DisplayDetailedInfo
+		Dim strText
+		
+		Dim objADSysInfo: Set objADSysInfo = CreateObject("ADSystemInfo")
+		Dim strADSite,strDC
+		
+		if not uCase(strLogonServer) = uCase("") Then 
+			strDC = Right(strLogonServer,Len(strLogonServer)-2)
+		else 
+			strDC = "unknown"
+		End if	
+		
+		'Get the AD site name. Set error handling to disabled in case we are not on the domain.
+		on error resume next
+			strADSite=objADSysInfo.SiteName
+		on error goto 0
+		
+		if uCase(strADSite) = uCase("") Then 
+			strADSite = "unknown"
+		End if
+		
+		strText = "<p><h2>Detailed Information</h2></p>" &_
+		"<p>" &_
+		"Logon Server: " & strDC & "<br>" &_
+		"Current AD site name: " & strADSite & "<br>" &_
+		"</p><br>"
+		
+		outputText strText,"Detailed_Info"
+	End Sub
+	
+	
+	'Display a the tools section
+	Sub DisplayTools		
+		Dim strToolsCode
+		Dim bolDisplay: bolDisplay = false
+		
+		strToolsCode =  "<p><h2>Tools</h2></p>"
+		
+		strToolsCode = strToolsCode & "<p>"
+		
+		'Link to the application catalog if SCCM client is installed
+		if objFSO.FileExists(sSoftwareCenterPath) then
+			bolDisplay = true
+			strToolsCode = strToolsCode & "<a href=" & QUOTES & "#" & QUOTES & " onClick=vbscript:RunAppCatalog" & QUOTES & ">Application Catalog</a><br>"
+		end if
+		
+		'Link to change bitlocker utility if it exists 
+		if objFSO.FileExists(sBitLockerPinPath) then
+			bolDisplay = true
+			strToolsCode = strToolsCode & "<a href=" & QUOTES & "#" & QUOTES & " onClick=vbscript:RunBdeChangePin" & QUOTES & ">Change Bitlocker PIN</a><br>"
+		end if
+		
+		'Link for software center if SCCM client is installed
+		if objFSO.FileExists(sSoftwareCenterPath) then
+			bolDisplay = true
+			strToolsCode = strToolsCode & "<a href=" & QUOTES & "#" & QUOTES & " onClick=vbscript:RunSoftwareCenter" & QUOTES & ">Software Center</a><br>"
+		end if
+		
+		'Link to run a gpupdate if online
+		if bolOffline <> true then
+			bolDisplay = true
+			strToolsCode = strToolsCode & "<a href=" & QUOTES & "#" & QUOTES & " onClick=vbscript:RunGPUpdate" & QUOTES & ">Refresh Group Policy</a><br>"
+		end if
+		
+		strToolsCode = strToolsCode & "</p><br>"
+		
+		if bolDisplay then 
+			outputText strToolsCode,"Tools"
+		end if
+	End Sub 
+	
+	'Run the SCCM software center
+	Sub RunSoftwareCenter
+		if objFSO.FileExists(sSoftwareCenterPath) then
+			wshshell.run sSoftwareCenterPath,1,false
+		end if
+	End Sub
+	
+	'Run the SCCM application catalog
+	Sub RunAppCatalog
+		wshshell.run """" & strProgFiles & "\Internet Explorer\iexplore.exe"" " & sAppCatalogUrl,1,false
+	End Sub
+	
+	'Run the SCCM software center
+	Sub RunGPUpdate
+		wshshell.run "gpupdate /force",1,false
+	End Sub
+	
+	'Run the Bitlocker change pin tool
+	Sub RunBdeChangePin
+		wshshell.run sBitLockerPinPath,1,false
+	End Sub
+	
+	'Turn the proxy on or off for laptops
+	Sub ChangeProxy
+		Dim intReturn
+		Dim strProxyKey,strHomePageKey
+		Dim proxyValue
+		
+		'bolProxyOn = True
+		
+		strProxyKey = "HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Internet Settings\ProxyEnable"
+		strHomePageKey = "HKEY_CURRENT_USER\Software\Policies\Microsoft\Internet Explorer\Main\Start Page"
+		proxyValue = WSHShell.RegRead(strProxyKey)
+		
+		if proxyValue = 1 then 
+			intReturn = msgbox("Proxy is currently ON." & VbCrLf & "Turn proxy off (for offsite use)?",OkCancel,"Change proxy settings")
+			if intReturn = 1 Then
+				WSHShell.RegWrite strProxyKey,0,"REG_DWORD"
+				msgbox "Proxy turned OFF." & VbCrLf & "Please restart your browser for settings to take effect.",Ok,"Change proxy settings"
+			end if
+		else
+			intReturn = msgbox("Proxy is currently OFF." & VbCrLf & "Turn proxy on (for onsite use)?",OkCancel,"Change proxy settings")
+			if intReturn = 1 Then
+				WSHShell.RegWrite strProxyKey,1,"REG_DWORD"
+				msgbox "Proxy turned ON." & VbCrLf & "Please restart your browser for settings to take effect.",Ok,"Change proxy settings"
+			end if
+		end if
+	End Sub
+	
+	Function IsBlank(Value)
+	'returns True if Empty or NULL or Zero
+		If IsEmpty(Value) or IsNull(Value) Then
+			IsBlank = True
+		ElseIf VarType(Value) = vbString Then
+			If Value = "" Then
+				IsBlank = True
+			End If
+		ElseIf IsObject(Value) Then
+			If Value Is Nothing Then
+				IsBlank = True
+			End If
+		Else
+			IsBlank = False
+		End If
+	End Function
+
+	'Output the desired text to the desired ID
+	Sub outputText(sText,strID)
+		document.getElementById(strID).innerHTML = document.getElementById(strID).innerHTML & sText 
+	End Sub
+</SCRIPT>
+
+<head>
+	<title>Information for IT Support</title>
+	<meta http-equiv="x-ua-compatible" content="ie=ie9" />
+	<HTA:APPLICATION 
+		ID="ITS" 
+		APPLICATIONNAME="IT_Suport"
+		SCROLL="auto"
+		SINGLEINSTANCE="yes"
+		BORDER="dialog">  
+	</HTA>
+
+	<style type="text/css">
+		body {background-color:#ffffff;}
+		h1 {text-align:left; font:14 pt; font-weight:bold; vertical-align:text-top;margin:0px 0px 5px 0px}
+		h2 {font:10 pt verdana; font-weight:bold; color:black; margin:10px 0px 0px 0px}
+		p {font:10 pt verdana; color:black;margin:0px 0px 5px 0px}
+		table { empty-cells: show; border-collapse: collapse;}
+		.logo {
+			position:absolute;
+			right:10px;
+			top:20px;
+		}
+		.left {
+			position:absolute;
+			left:0px;
+			top:0px;
+		}
+	</style>
+
+</head>
+
+<body onload="LoadHTA" STYLE="font:14 pt Verdana; color:black;">	
+	<div id="Heading">
+	</div>
+	
+	<hr color=blue />
+
+	<div id="Info">
+		<div id="Basic_Info"></div>
+		<div id="NIC_Info"></div>
+		<div id="Tools"></div>	
+		<div id="ResetSettings"></div>	
+		<div id="Detailed_Info"></div>
+		
+
+	</div>
+
+</body>
+
+
+
