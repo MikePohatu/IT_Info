@@ -13,13 +13,13 @@
 	option explicit
 	
 	'Customise these entries for your environment
-	Dim sAppCatalogUrl: sAppCatalogUrl = "http://SCCMSERVER/CMApplicationCatalog"
-	Dim sNetworkPathText: sNetworkPathText = "\\DOMAIN\NETLOGON\"	
-	Dim sLogoFile: sLogoFile = "logo.jpg"
-	Dim sServiceDeskLabel: sServiceDeskLabel = "Service Desk"
-	Dim sEmailAddr: sEmailAddr = sServiceDeskLabel & "<ServiceDesk@domain.com>"
-	Dim sServiceDeskExtn: sServiceDeskExtn = "1234"
-	Dim sServiceDeskDdi: sServiceDeskDdi = "555 5555"
+	Dim sAppCatalogUrl: sAppCatalogUrl = "http://SCCMSERVER/CMApplicationCatalog"  	'path to SCCM application catalog
+	Dim sNetworkPathText: sNetworkPathText = "\\DOMAIN\NETLOGON\"					'network path to test if on the network or not
+	Dim sLogoFile: sLogoFile = "logo.jpg"											'file name of the logo image. must be in the same directory as hta file
+	Dim sServiceDeskLabel: sServiceDeskLabel = "Service Desk"						'text to appear in GUI to identify the service desk/help desk
+	Dim sEmailAddr: sEmailAddr = sServiceDeskLabel & "<ServiceDesk@domain.com>"		'email address for service desk. set to "" to remove from gui
+	Dim sServiceDeskExtn: sServiceDeskExtn = "1234"									'extn for service desk. set to "" to remove from gui
+	Dim sServiceDeskDdi: sServiceDeskDdi = "555 5555"								'DDI/external phone number for service desk. set to "" to remove from gui
 	
 	Const sVersion = "v1.4"
 	Const QUOTES = ""
@@ -123,7 +123,7 @@
 			sHtml = sHtml & "Email: <a href=""mailto:" & sEmailAddr & "?body=" & sEmailText & """>" & sServiceDeskLabel & "</a><br>"
 		end if
 
-		if IsBlank(sServiceDeskDdi) = false then
+		if IsBlank(sServiceDeskExtn) = false then
 			sHtml = sHtml & "Extn: " & sServiceDeskExtn & "<br>"
 		end if
 		
